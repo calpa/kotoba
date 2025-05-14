@@ -1,11 +1,14 @@
 import { Hono } from "hono";
+import { z } from "zod";
+import { createNotionRecord } from "./functions/createNotionRecord";
+import { submitSchema } from "./types/submitSchema";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
 app.post("/submit", async (c) => {
   console.log("[/submit] Incoming request");
 
-  let body;
+  let body: unknown;
   try {
     body = await c.req.json();
     console.log("[/submit] Parsed body:", body);
@@ -14,34 +17,28 @@ app.post("/submit", async (c) => {
     return c.json({ success: false, error: "Invalid JSON" }, 400);
   }
 
-  const notionPayload = {
-    parent: { database_id: c.env.NOTION_DATABASE_ID },
-    properties: {
-      姓名: {
-        title: [
-          {
-            text: { content: body.name || "No Name" },
-          },
-        ],
+  let name: string, email: string;
+  try {
+    ({ name, email } = submitSchema.parse(body));
+  } catch (err) {
+    console.error("[/submit] Validation error:", err);
+    return c.json(
+      {
+        success: false,
+        error: "Validation failed",
+        details: err instanceof z.ZodError ? err.flatten() : undefined,
       },
-      電子郵件: {
-        email: body.email || null,
-      },
-    },
-  };
-
-  console.log("[/submit] Notion payload:", notionPayload);
+      400
+    );
+  }
 
   let notionRes;
   try {
-    notionRes = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${c.env.NOTION_API_KEY}`,
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(notionPayload),
+    notionRes = await createNotionRecord({
+      notionApiKey: c.env.NOTION_API_KEY,
+      database_id: c.env.NOTION_DATABASE_ID,
+      name,
+      email,
     });
     console.log("[/submit] Notion API status:", notionRes.status);
   } catch (err) {
