@@ -5,6 +5,10 @@ import { submitSchema } from "./types/submitSchema";
 
 const app = new Hono<{ Bindings: CloudflareBindings }>();
 
+app.get("/", (c) => {
+  return c.json({ message: "Hello, world!" });
+});
+
 app.post("/submit", async (c) => {
   console.log("[/submit] Incoming request");
 
